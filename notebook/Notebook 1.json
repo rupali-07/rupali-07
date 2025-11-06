@@ -1,0 +1,64 @@
+{
+	"name": "Notebook 1",
+	"properties": {
+		"nbformat": 4,
+		"nbformat_minor": 2,
+		"bigDataPool": {
+			"referenceName": "synspool",
+			"type": "BigDataPoolReference"
+		},
+		"sessionProperties": {
+			"driverMemory": "56g",
+			"driverCores": 8,
+			"executorMemory": "56g",
+			"executorCores": 8,
+			"numExecutors": 2,
+			"conf": {
+				"spark.dynamicAllocation.enabled": "false",
+				"spark.dynamicAllocation.minExecutors": "2",
+				"spark.dynamicAllocation.maxExecutors": "2",
+				"spark.autotune.trackingId": "e616a364-319a-4f82-ae85-e60634b29d22"
+			}
+		},
+		"metadata": {
+			"saveOutput": true,
+			"enableDebugMode": false,
+			"kernelspec": {
+				"name": "synapse_pyspark",
+				"display_name": "Synapse PySpark"
+			},
+			"language_info": {
+				"name": "sql"
+			},
+			"a365ComputeOptions": {
+				"id": "/subscriptions/658e09a5-4f3e-4967-b3a6-646522655db5/resourceGroups/Netflix-DF/providers/Microsoft.Synapse/workspaces/test-workspace-forlookup/bigDataPools/synspool",
+				"name": "synspool",
+				"type": "Spark",
+				"endpoint": "https://test-workspace-forlookup.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/synspool",
+				"auth": {
+					"type": "AAD",
+					"authResource": "https://dev.azuresynapse.net"
+				},
+				"sparkVersion": "3.5",
+				"nodeCount": 10,
+				"cores": 8,
+				"memory": 56,
+				"automaticScaleJobs": false
+			},
+			"sessionKeepAliveTimeout": 30
+		},
+		"cells": [
+			{
+				"cell_type": "code",
+				"source": [
+					"from pyspark.sql import SparkSession\n",
+					"spark = SparkSession.builder.appName(\"TestNotebook\").getOrCreate()\n",
+					"data = [(\"Alice\", 25), (\"Bob\", 30)]\n",
+					"df = spark.createDataFrame(data, [\"Name\", \"Age\"])\n",
+					"df.show()"
+				],
+				"execution_count": 1
+			}
+		]
+	}
+}
