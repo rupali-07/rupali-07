@@ -1,0 +1,10 @@
+{
+	"name": "AzureDataLakeStorage204",
+	"properties": {
+		"privateLinkResourceId": "/subscriptions/658e09a5-4f3e-4967-b3a6-646522655db5/resourceGroups/Netflix-DF/providers/Microsoft.Storage/storageAccounts/netflixstrg",
+		"groupId": "dfs",
+		"fqdns": [
+			"netflixstrg.dfs.core.windows.net"
+		]
+	}
+}

@@ -1,0 +1,120 @@
+{
+	"name": "Json1",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "AzureDataLakeStorage1",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "Json",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobFSLocation",
+				"fileName": "Dummy.json",
+				"fileSystem": "test"
+			}
+		},
+		"schema": {
+			"type": "object",
+			"properties": {
+				"orgs": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"sourcedId": {
+								"type": "string"
+							},
+							"status": {
+								"type": "string"
+							},
+							"dateLastModified": {
+								"type": "string"
+							},
+							"name": {
+								"type": "string"
+							},
+							"type": {
+								"type": "string"
+							},
+							"identifier": {
+								"type": "string"
+							},
+							"parent": {
+								"type": "object"
+							},
+							"children": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"href": {
+											"type": "string"
+										},
+										"sourcedId": {
+											"type": "string"
+										},
+										"type": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					}
+				},
+				"ResponseHeaders": {
+					"type": "object",
+					"properties": {
+						"Connection": {
+							"type": "string"
+						},
+						"Strict-Transport-Security": {
+							"type": "string"
+						},
+						"Link": {
+							"type": "string"
+						},
+						"x-endpoint": {
+							"type": "string"
+						},
+						"x-count": {
+							"type": "string"
+						},
+						"x-total-count": {
+							"type": "string"
+						},
+						"x-page-generation-time-ms": {
+							"type": "string"
+						},
+						"x-perm-rev": {
+							"type": "string"
+						},
+						"x-obfuscated": {
+							"type": "string"
+						},
+						"Date": {
+							"type": "string"
+						},
+						"Server": {
+							"type": "string"
+						},
+						"X-Powered-By": {
+							"type": "string"
+						},
+						"Content-Length": {
+							"type": "string"
+						},
+						"Content-Type": {
+							"type": "string"
+						}
+					}
+				},
+				"executionDuration": {
+					"type": "integer"
+				}
+			}
+		}
+	},
+	"type": "Microsoft.Synapse/workspaces/datasets"
+}
