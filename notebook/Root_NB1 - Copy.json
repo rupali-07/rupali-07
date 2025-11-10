@@ -1,0 +1,1478 @@
+{
+	"name": "Root_NB1 - Copy",
+	"properties": {
+		"folder": {
+			"name": "NB_test"
+		},
+		"nbformat": 4,
+		"nbformat_minor": 2,
+		"bigDataPool": {
+			"referenceName": "synspool",
+			"type": "BigDataPoolReference"
+		},
+		"sessionProperties": {
+			"driverMemory": "56g",
+			"driverCores": 8,
+			"executorMemory": "56g",
+			"executorCores": 8,
+			"numExecutors": 2,
+			"runAsWorkspaceSystemIdentity": false,
+			"conf": {
+				"spark.dynamicAllocation.enabled": "false",
+				"spark.dynamicAllocation.minExecutors": "2",
+				"spark.dynamicAllocation.maxExecutors": "2",
+				"spark.autotune.trackingId": "0315aa93-a585-4e79-89e6-b401c2679edc"
+			}
+		},
+		"metadata": {
+			"saveOutput": true,
+			"synapse_widget": {
+				"version": "0.1"
+			},
+			"enableDebugMode": false,
+			"language_info": {
+				"name": "python"
+			},
+			"a365ComputeOptions": {
+				"id": "/subscriptions/658e09a5-4f3e-4967-b3a6-646522655db5/resourceGroups/Netflix-DF/providers/Microsoft.Synapse/workspaces/test-workspace-forlookup/bigDataPools/synspool",
+				"name": "synspool",
+				"type": "Spark",
+				"endpoint": "https://test-workspace-forlookup.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/synspool",
+				"auth": {
+					"type": "AAD",
+					"authResource": "https://dev.azuresynapse.net",
+					"authHeader": null
+				},
+				"sparkVersion": "3.5",
+				"nodeCount": 10,
+				"cores": 8,
+				"memory": 56,
+				"extraHeader": null
+			},
+			"sessionKeepAliveTimeout": 30
+		},
+		"cells": [
+			{
+				"cell_type": "code",
+				"source": [
+					" tag_Gen2=spark.read.format(\"sstream\").load(\"abfss://filesystem@prodblueshift.dfs.core.windows.net/local/GDPR/taggingData_v2_new.ss\")\n",
+					" tag_Gen2.createTempView(\"vw_tagsdata\")"
+				],
+				"execution_count": 24
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"display(tag_Gen2)"
+				],
+				"execution_count": 83
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Select ResourceURI,PartitionURI as NormalisedPath,TagName As FullName,TagProperties As Properties,reverse(substring(reverse(TagName),1,instr(reverse(TagName),'.')-1)) as Name,column,\n",
+					"replace(TagName,reverse(substring(reverse(TagName),1,instr(reverse(TagName),'.')))) as Namespace,\n",
+					"case when column !='' then FullName else '' end  As MetadataType  From vw_tagsdata\n",
+					"where PartitionURI=\"https://prodblueshift.dfs.core.windows.net/filesystem/local/CnEDataInsights/Public/BizApps/ceintegratedmarketing/CampaignData/Flow/Newsletter/historicaldata/FlowNewsletterHistoricalData/FlowNewsletterHistoricalData.parquet\"\n",
+					"    and column!=''"
+				],
+				"execution_count": 27
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"display(\n",
+					"    tag_Gen2\n",
+					"    .filter(col(\"PartitionURI\").contains(\"FlowNewsletterHistoricalData\"))\n",
+					"    .distinct()\n",
+					")"
+				],
+				"execution_count": 19
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"jupyter": {
+						"outputs_hidden": false
+					},
+					"collapsed": false
+				},
+				"source": [
+					"df_filt=df_t2.filter(~col(\"after_dot\").isin('xml','xlsx','script','Script','View','Module','module','txt', 'config', 'json','ss','log', '.ss')).select(\"after_dot\").distinct()\n",
+					"df_filt.count()"
+				],
+				"execution_count": 17
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_filt=df_t2.filter(~col(\"after_dot\").isin('xml','xlsx','script','Script','View','Module','module','txt', 'config', 'json','ss','log', '.ss')).select(\"after_dot\").distinct()\n",
+					"df_filt.count()"
+				]
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"from pyspark.sql.functions import split, element_at, col\n",
+					"\n",
+					"\n",
+					"df_filtered_Delta_Parquet = tag_Gen2.filter(\n",
+					"    ~element_at(split(col(\"PartitionURI\"), \"/\"), -1).contains(\".\") | col(\"PartitionURI\").contains(\".parquet\")\n",
+					")\n",
+					"\n",
+					"df_filtered_Delta_Parquet_1 = tag_Gen2.withColumn(\"Newcol\",element_at(split(col(\"PartitionURI\"), \"/\"), -1)).limit(10)\n",
+					"display(df_filtered_Delta_Parquet)"
+				],
+				"execution_count": 33
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_filtered_Delta_Parquet.coalesce(1).write.format(\"csv\").option(\"header\",\"true\").save(\"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/FilesCheck/Delta_Parquet.csv\")"
+				],
+				"execution_count": 30
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"import os\n",
+					"from pyspark.sql import SparkSession\n",
+					"\n",
+					"def is_delta_table(spark, path):\n",
+					"    try:\n",
+					"        # Use DeltaTable API to check if the path is a Delta table\n",
+					"        from delta.tables import DeltaTable\n",
+					"        DeltaTable.forPath(spark, path)\n",
+					"        return True\n",
+					"    except:\n",
+					"        return False\n",
+					"\n",
+					"def read_data(spark, path):\n",
+					"    if is_delta_table(spark, path):\n",
+					"        print(f\"Reading Delta table from: {path}\")\n",
+					"        return spark.read.format(\"delta\").load(path)\n",
+					"    else:\n",
+					"        print(f\"Reading Parquet file from: {path}\")\n",
+					"        return spark.read.format(\"parquet\").load(path)\n",
+					""
+				],
+				"execution_count": 2
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"path = \"abfss://filesystem@prodblueshift.dfs.core.windows.net/local/CnEDataInsights/Public/Skilling/PageView/Parquet/*.parquet\"\n",
+					"df = read_data(spark, df_filtered_Delta_Parquet.select(\"PartitionURI\"))\n",
+					"df.show()"
+				],
+				"execution_count": 5
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"spark.conf.set(\"spark.storage.synapse.linkedServiceName\",\"deceuproddeleteagent\")\n",
+					"spark.conf.set(\"fs.azure.account.oauth.provider.type\",\"com.microsoft.azure.synapse.tokenlibrary.LinkedServiceBasedTokenProvider\")\n",
+					"df_Gen2Signal1= spark.read.format(\"csv\").option(\"delimiter\",'\\t').option(\"header\",\"true\").load(\"abfss://ngp@deceuproddeleteagent.dfs.core.windows.net/e06a4a4a-ee99-46fb-b7f9-76017dc57665/2025-09-12T00:00:00_2025-09-12T01:00:00/Delete/DeleteCommands_1.txt\")\n",
+					"df_Gen2Signal2= spark.read.format(\"csv\").option(\"delimiter\",'\\t').option(\"header\",\"true\").load(\"abfss://ngp@deceuproddeleteagent.dfs.core.windows.net/e06a4a4a-ee99-46fb-b7f9-76017dc57665/2025-09-12T00:00:00_2025-09-12T01:00:00/Delete/DeleteCommands_2.txt\")\n",
+					"df_Gen2Signal3= spark.read.format(\"csv\").option(\"delimiter\",'\\t').option(\"header\",\"true\").load(\"abfss://ngp@deceuproddeleteagent.dfs.core.windows.net/e06a4a4a-ee99-46fb-b7f9-76017dc57665/2025-09-12T00:00:00_2025-09-12T01:00:00/Delete/DeleteCommands_3.txt\")\n",
+					"df_Gen2Signal4= spark.read.format(\"csv\").option(\"delimiter\",'\\t').option(\"header\",\"true\").load(\"abfss://ngp@deceuproddeleteagent.dfs.core.windows.net/e06a4a4a-ee99-46fb-b7f9-76017dc57665/2025-09-12T00:00:00_2025-09-12T01:00:00/Delete/DeleteCommands_4.txt\")\n",
+					"df_Gen2Signal5= spark.read.format(\"csv\").option(\"delimiter\",'\\t').option(\"header\",\"true\").load(\"abfss://ngp@deceuproddeleteagent.dfs.core.windows.net/e06a4a4a-ee99-46fb-b7f9-76017dc57665/2025-09-12T00:00:00_2025-09-12T01:00:00/Delete/DeleteCommands_5.txt\")\n",
+					"df_Gen2Signal=df_Gen2Signal1.union(df_Gen2Signal2).union(df_Gen2Signal3).union(df_Gen2Signal4).union(df_Gen2Signal5)"
+				],
+				"execution_count": 1
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"from pyspark.sql.functions import from_json, col\n",
+					"from pyspark.sql.types import MapType, StringType\n",
+					"\n",
+					"# Let's say your column is called 'json_column'\n",
+					"# Step 1: Parse JSON string into MapType (key-value pairs)\n",
+					"df_parsed = df_Gen2Signal.withColumn(\"parsed_json\", from_json(col(\"Subject\"), MapType(StringType(), StringType())))\n",
+					"# Step 2: Extract all keys from all JSONs\n",
+					"all_keys = df_parsed.selectExpr(\"explode(map_keys(parsed_json)) as key\").distinct().collect()\n",
+					"\n",
+					"# Step 3: Convert Row objects to a list of strings\n",
+					"keys_list = [row['key'] for row in all_keys]\n",
+					"\n",
+					"print(\"Extracted keys:\", keys_list)\n",
+					"\n",
+					""
+				],
+				"execution_count": 8
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_Signal_data=spark.read.format(\"sstream\").load(\"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/GDPR/CosmosDeleteAgent/DeleteSignal/65feee30-9aa0-485b-a131-8409f03e75db/Delete/v2/2025/10/06/*ss\")"
+				],
+				"execution_count": 9
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"display(df_Signal_data.limit(10))"
+				],
+				"execution_count": 11
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"from pyspark.sql.functions import from_json, col\n",
+					"from pyspark.sql.types import MapType, StringType\n",
+					"\n",
+					"# Let's say your column is called 'json_column'\n",
+					"# Step 1: Parse JSON string into MapType (key-value pairs)\n",
+					"\n",
+					"from pyspark.sql.functions import regexp_replace, col\n",
+					"\n",
+					"df_Signal_data_Updated = df_Signal_data.withColumn(\n",
+					"    \"NewCol\",\n",
+					"    regexp_replace(\n",
+					"        regexp_replace(\n",
+					"            regexp_replace(\n",
+					"                regexp_replace(col(\"Subject\"), r'\\{\"aadUser\":', ''\n",
+					"            ), r'\\{\"user\":', ''\n",
+					"            ), r'\\{\"device\":', ''\n",
+					"        ), r'}$', ''  # Remove trailing }\n",
+					"    )\n",
+					")\n",
+					"\n",
+					"# display(df_Signal_data_Updated)\n",
+					"\n",
+					"df_parsed = df_Signal_data_Updated.withColumn(\"parsed_json\", from_json(col(\"NewCol\"), MapType(StringType(), StringType())))\n",
+					"# Step 2: Extract all keys from all JSONs\n",
+					"all_keys = df_parsed.selectExpr(\"explode(map_keys(parsed_json)) as key\").distinct().collect()\n",
+					"\n",
+					"# Step 3: Convert Row objects to a list of strings\n",
+					"keys_list = [row['key'] for row in all_keys]\n",
+					"\n",
+					"print(\"Extracted keys:\", keys_list)\n",
+					"# Extracted keys: ['device', 'user', 'aadUser']\n",
+					"\n",
+					"Extracted keys: ['aadObjectId', 'aadPuid', 'aadHomeTenantId', 'msaAnid', 'msaOpid', 'msaPuid', 'msaXuid', 'msaCid', 'aadTenantIdType', 'aadResourceTenantId']\n",
+					""
+				],
+				"execution_count": 16
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"\n",
+					"from pyspark.sql.types import StructType, StructField, LongType\n",
+					"\n",
+					"from pyspark.sql.functions import format_string, upper\n",
+					"\n",
+					"schema = StructType([\n",
+					"    StructField(\"org_id_puid\", LongType(), True)\n",
+					"])\n",
+					"\n",
+					"\n",
+					"\n",
+					"# Create sample data\n",
+					"data = [\n",
+					"    (-1076060239500170172,),              # normal value\n",
+					"    (1153801133226947189,),            # larger number\n",
+					"    (1153801125482829606,),                     # zero value\n",
+					"    (None,),                  # null value\n",
+					"    (1153801120323632388,)    # max value for signed 64-bit int\n",
+					"]\n",
+					"df = spark.createDataFrame(data, schema)\n",
+					"df_with_hex = df.withColumn(\n",
+					"    \"org_id_puid_hex\",\n",
+					"    upper(format_string(\"%016X\", df[\"org_id_puid\"]))\n",
+					")\n",
+					"display(df_with_hex)"
+				],
+				"execution_count": 206
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"display(df_Gen2Signal.select(\"Subject\"))#.filter(col(\"Subject\").contains(\"GlobalDeviceId\")))\n",
+					"\n",
+					".Curretn appl     {\"aadUser\":{\"aadObjectId\":\"010ed398-c938-4d40-8d5a-1239a1792b52\",\"orgIdPuid\":1153801134835848657,\"aadTenantId\":\"d649105c-ab32-42f4-9e1a-3a6db8cada94\"}}\n",
+					"New Batch command {\"aadHomeTenantId\":\"3f66012c-0b39-4602-bd8a-09f28a9aa533\",\"aadObjectId\":\"5acd8f46-b88d-483e-93ac-d88a333a0c7b\",\"aadPuid\":\"1153801135403278049\",\"aadResourceTenantId\":\"3f66012c-0b39-4602-bd8a-09f28a9aa533\",\"aadTenantIdType\":\"Home\"}\n",
+					""
+				],
+				"execution_count": 230
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"display(Subject)"
+				],
+				"execution_count": 191
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					}
+				},
+				"source": [
+					"%%sql\n",
+					""
+				]
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"display(df_Gen2Signal.select(\"CommandProperties\").distinct())"
+				],
+				"execution_count": 8
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"jupyter": {
+						"outputs_hidden": false
+					},
+					"collapsed": false
+				},
+				"source": [
+					"from pyspark.sql import SparkSession\n",
+					"from pyspark.sql.types import StructType, StructField, StringType\n",
+					"from pyspark.sql.functions import schema_of_json, from_json, col,regexp_replace,lit\n",
+					"# Step 1: Create a DataFrame with the JSON string\n",
+					"\n",
+					"\n",
+					"Subject_schema = StructType([\n",
+					"    StructField(\"aadHomeTenantId\", StringType(), True),\n",
+					"    StructField(\"aadObjectId\", StringType(), True),\n",
+					"    StructField(\"aadPuid\", StringType(), True),\n",
+					"    StructField(\"aadResourceTenantId\", StringType(), True),\n",
+					"    StructField(\"aadTenantIdType\", StringType(), True),\n",
+					"    StructField(\"msaAnid\", StringType(), True),\n",
+					"    StructField(\"msaCid\", StringType(), True),\n",
+					"    StructField(\"msaOpid\", StringType(), True),\n",
+					"    StructField(\"msaPuid\", StringType(), True),\n",
+					"    StructField(\"msaXuid\", StringType(), True)\n",
+					"])\n",
+					"\n",
+					"\n",
+					"# Step 3: Parse JSON into struct using inferred schema\n",
+					"\n",
+					"df_parsed = df_Gen2Signal.withColumn(\"json_data\", from_json(col(\"Subject\"), Subject_schema))\n",
+					"#\\.filter(col(\"Subject\")=='{\"msaAnid\":\"F57603835D3A5468C6FA748DFFFFFFFF\",\"msaCid\":\"-5694305515619928651\",\"msaOpid\":\"-F7rfv3JKQ2ByBAcVq7n6A2\",\"msaPuid\":\"1055520124748401\",\"msaXuid\":\"2535423617069808\"}')\n",
+					"\n",
+					"\n",
+					"# Step 4: Select all fields from the parsed struct\n",
+					"df_final = df_parsed.select(\"OperationType\",*[col(f\"json_data.{field.name}\").alias(field.name) for field in Subject_schema.fields])\n",
+					"display(df_final)\n",
+					""
+				],
+				"execution_count": 5
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_final.count()"
+				],
+				"execution_count": 227
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"jupyter": {
+						"outputs_hidden": false
+					},
+					"collapsed": false
+				},
+				"source": [
+					"display(df_Gen2Signal.select(\"commandproperties\").distinct())\n",
+					"\n",
+					"[{\"Property\":\"DataType\",\"Values\"\n",
+					":[\"Account\",\"BrowsingHistory\",\"Biometric\",\"CloudServiceProvider\",\"ContentConsumption\",\"Credentials\",\"CustomerContact\",\"CustomerContactList\",\"CustomerContent\",\"DemographicInformation\",\"DeviceConnectivityAndConfiguration\",\n",
+					"\"EnvironmentalSensor\",\"EUII\",\"FeedbackAndRatings\",\"FitnessAndActivity\",\"InkingTypingAndSpeechUtterance\",\"InterestsAndFavorites\",\"LearningAndDevelopment\",\"LicensingAndPurchase\",\"PaymentInstrument\",\"PreciseUserLocation\",\n",
+					"\"ProductAndServicePerformance\",\"ProductAndServiceUsage\",\"ProfessionalAndPersonalProfile\",\"PublicPersonal\",\"SearchRequestsAndQuery\",\"Social\",\"SoftwareSetupAndInventory\",\"Support\",\"SupportContent\",\"SupportInteraction\"]},\n",
+					"{\"Property\":\"SubjectType\",\"Values\":[\"AADUser-Public\"]}]\n",
+					""
+				],
+				"execution_count": 69
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"display(df_Gen2Signal.select(\"CommandTypeId\").distinct())"
+				],
+				"execution_count": 171
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"jupyter": {
+						"outputs_hidden": false
+					},
+					"collapsed": false
+				},
+				"source": [
+					"from pyspark.sql.functions import col, from_json\n",
+					"from pyspark.sql.types import MapType, StringType\n",
+					"\n",
+					"# Step 1: Define schema to parse the JSON string as a map\n",
+					"subject_schema = MapType(StringType(), StringType())\n",
+					"\n",
+					"# Step 2: Read the extractedCommands DataFrame (assuming it's already loaded)\n",
+					"# e.g., extractedCommands = spark.read.parquet(\"abfss://your-container@your-storage.dfs.core.windows.net/path\")\n",
+					"\n",
+					"# Step 3: Filter, parse JSON, and select required columns\n",
+					"commands_2_deserialize = (\n",
+					"    df_Gen2Signal\n",
+					"    .filter(col(\"CommandTypeId\") == 73)\n",
+					"    .withColumn(\"Subject\", from_json(col(\"Subject\"), subject_schema))\n",
+					"    .select(\"CommandId\", \"Subject\")\n",
+					")\n",
+					"\n",
+					"# Optional: Show result\n",
+					"display(commands_2_deserialize)\n",
+					""
+				],
+				"execution_count": 172
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"display(df_Signal_Gen1.select(\"Subject\").distinct().limit(10))"
+				],
+				"execution_count": 174
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"commands_2 = (\n",
+					"    commands_2_deserialize\n",
+					"    .select(\n",
+					"        col(\"CommandId\"),\n",
+					"        col(\"Subject\")[\"msaPuid\"].alias(\"Puid\"),\n",
+					"        col(\"Subject\")[\"msaAnid\"].alias(\"Anid\"),\n",
+					"        col(\"Subject\")[\"msaCid\"].alias(\"Cid\")\n",
+					"    )\n",
+					")\n",
+					"display(commands_2)"
+				],
+				"execution_count": 40
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_Signal_Gen1=spark.read.format(\"sstream\").load(\"adl://gdc-mdp-dev-c15.azuredatalakestore.net//local/GDPR/CosmosDeleteAgent/DeleteSignal/65feee30-9aa0-485b-a131-8409f03e75db/Delete/v2/2025/10/03/*ss\")"
+				],
+				"execution_count": 258
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"jupyter": {
+						"outputs_hidden": false
+					},
+					"collapsed": false
+				},
+				"source": [
+					"display(df_Signal_Gen1.select(\"CommandTypeId\",\"RequestType\").distinct())"
+				],
+				"execution_count": 49
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"jupyter": {
+						"outputs_hidden": true
+					},
+					"collapsed": false
+				},
+				"source": [
+					"from pyspark.sql.functions import get_json_object\n",
+					"\n",
+					"# Extract the nested JSON from the \"aadUser\" field\n",
+					"df_Signal_Gen11 = df_Signal_Gen1.withColumn(\"inner_json\", get_json_object(\"Subject\", \"$.aadUser\"))\n",
+					"# display(df_Signal_Gen11.filter(col(\"Subject\").contains(\"cid:\")))\n",
+					"disp=df_Signal_Gen1.withColumn(\"Sun\",col(\"Subject\").substr(1,5))#.select(\"Sun\").distinct()\n",
+					"display(disp.filter(\"Sun = '{\\\"use'\"))"
+				],
+				"execution_count": 257
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"from pyspark.sql import SparkSession\n",
+					"from pyspark.sql.functions import col, from_json, lit\n",
+					"from pyspark.sql.types import StructType, StringType, LongType, IntegerType\n",
+					"\n",
+					"\n",
+					"# 3. Define schemas\n",
+					"aad_user_schema = StructType() \\\n",
+					"    .add(\"aadUser\", StructType()\n",
+					"        .add(\"aadObjectId\", StringType())\n",
+					"        .add(\"orgIdPuid\", StringType())\n",
+					"        .add(\"aadTenantId\", StringType()))\n",
+					"\n",
+					"user_schema = StructType() \\\n",
+					"    .add(\"user\", StructType()\n",
+					"        .add(\"anid\", StringType())\n",
+					"        .add(\"cid\", StringType())\n",
+					"        .add(\"opid\", StringType())\n",
+					"        .add(\"puid\", StringType()))\n",
+					"\n",
+					"# 4. Parse each type separately\n",
+					"df_aad = df_Signal_Gen1.withColumn(\"parsed\", from_json(\"Subject\", aad_user_schema)) \\\n",
+					"    .filter(col(\"parsed.aadUser\").isNotNull()) \\\n",
+					"    .select(\n",
+					"        col(\"parsed.aadUser.aadObjectId\"),\n",
+					"        col(\"parsed.aadUser.orgIdPuid\"),\n",
+					"        col(\"parsed.aadUser.aadTenantId\"),\n",
+					"    ) \\\n",
+					"    .withColumn(\"user_type\", lit(\"aadUser\"))\n",
+					"\n",
+					"df_user = df_Signal_Gen1.withColumn(\"parsed\", from_json(\"Subject\", user_schema)) \\\n",
+					"    .filter(col(\"parsed.user\").isNotNull()) \\\n",
+					"    .select(\n",
+					"        col(\"parsed.user.anid\"),\n",
+					"        col(\"parsed.user.cid\"),\n",
+					"        col(\"parsed.user.opid\"),\n",
+					"        col(\"parsed.user.puid\"),\n",
+					"    ) \\\n",
+					"    .withColumn(\"user_type\", lit(\"user\"))\n",
+					"\n",
+					"# 5. Union all rows into a single DataFrame with outer join schema\n",
+					"df_final = df_aad.unionByName(df_user, allowMissingColumns=True)\n",
+					"\n",
+					"# 6. Show result\n",
+					"df_final.show(truncate=False)\n",
+					""
+				],
+				"execution_count": 262
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"from pyspark.sql.functions import col, from_json,regexp_replace\n",
+					"from pyspark.sql.types import MapType, StringType\n",
+					"\n",
+					"# Step 1: Define schema to parse the JSON string as a map\n",
+					"subject_schema = MapType(StringType(), StringType())\n",
+					"\n",
+					"# Step 2: Read the extractedCommands DataFrame (assuming it's already loaded)\n",
+					"# e.g., extractedCommands = spark.read.parquet(\"abfss://your-container@your-storage.dfs.core.windows.net/path\")\n",
+					"\n",
+					"# Step 3: Filter, parse JSON, and select required columns\n",
+					"commands_2_deserialize = (\n",
+					"    df_Signal_Gen1\n",
+					"    .filter(col(\"CommandTypeId\") == 73)\n",
+					"    .withColumn(\"Subject\", from_json(regexp_replace(col(\"Subject\"),\"{user:\",\"\"), subject_schema))\n",
+					"    .select(\"CommandId\", \"Subject\")\n",
+					")\n",
+					"\n",
+					"# Optional: Show result\n",
+					"display(commands_2_deserialize)\n",
+					""
+				]
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"from pyspark.sql.functions import col\n",
+					"# display(df_Signal_Gen1.filter(col(\"Subject\").contains(\"OrgIdPuid\")))\n",
+					"display(df_Signal_Gen1.select(\"Predicate\").distinct())"
+				],
+				"execution_count": 30
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"\n",
+					"df_Gen2Signal.createOrReplaceTempView(\"vw_Signals\")"
+				],
+				"execution_count": 2
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"display(df_Gen2Signal.limit(2))"
+				],
+				"execution_count": 6
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"display(df_Gen2Signal.select(\"RowPredicate\").distinct())"
+				],
+				"execution_count": 27
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Select count(1),Operation\n",
+					" from vw_Signals\n",
+					"group by Operation"
+				],
+				"execution_count": 7
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"tags": [
+						"parameters"
+					]
+				},
+				"source": [
+					"AssertGroupId=\"dbb2ce9f-f343-49a9-84bf-dced838e969a\"\n",
+					"EndDate='2025-09-24 00:00:00'\n",
+					"# input_tagging_path = \"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/DataPrivacy/NGPTest/2025_09_22/taggedData_GDC_MDP_Prod.ss\"\n",
+					"input_tagging_path = \"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/DataPrivacy/NGPTest/TaggingData/\"\n",
+					"output_path_base = \"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/Output/\""
+				],
+				"execution_count": 50
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"from datetime import datetime, timedelta\n",
+					"# EndDate = '2025-09-24 00:00:00'\n",
+					"StDate = datetime.strptime(EndDate, '%Y-%m-%d %H:%M:%S')\n",
+					"print(EndDate)\n",
+					"hours_to_subtract = 24  # check last 24 hours\n",
+					"found_datetime = None\n",
+					"for i in range(1,24):\n",
+					"    adjusted_time = StDate - timedelta(hours=i)\n",
+					"    print(adjusted_time)\n",
+					"    year = str(adjusted_time.year)\n",
+					"    month = adjusted_time.strftime('%m')\n",
+					"    day = adjusted_time.strftime('%d')\n",
+					"    hour = adjusted_time.strftime('%H')\n",
+					"    mins = adjusted_time.strftime('%M')\n",
+					"    secs = adjusted_time.strftime('%S')\n",
+					"\n",
+					"    Date_format = f\"{year}_{month}_{day}T{hour}_{mins}_{secs}\"\n",
+					"    Date_format_Path = f\"{year}/{month}/{day}\"\n",
+					"    DeleteSignalBasePath= f\"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/GDPR/CosmosDeleteAgent/DeleteSignal/{AssertGroupId}/Delete/v2/{Date_format_Path}/DeleteSignals_{Date_format}.tsv\"\n",
+					"    print(DeleteSignalBasePath)\n",
+					"    if mssparkutils.fs.ls(DeleteSignalBasePath):\n",
+					"        found_datetime = f\"{year}{month}{day}{hour}{mins}{secs}\"\n",
+					"        print(f\"File found: {DeleteSignalBasePath}\")\n",
+					"        break\n",
+					"if found_datetime:\n",
+					"    print(f\"Found file datetime: {found_datetime}\")\n",
+					"else:\n",
+					"    print(\"No matching file found in last 24 hours.\")"
+				],
+				"execution_count": 51
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"1.Reading Tagging Data"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"input_tagging_path = \"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/TaggingData_20250929/Taggingdata.ss\"\n",
+					"# output_path_base_delta = \"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/2025_09_28/Pyspark\"\n",
+					"output_path_base = f\"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/{Date_format}/Pyspark\""
+				],
+				"execution_count": 52
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"taggedData = spark.read.format(\"sstream\").load(input_tagging_path)\n",
+					"taggedData.createOrReplaceTempView(\"vw_df\")"
+				],
+				"execution_count": 53
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"display(df_Tags_Final.filter(\"resourceURI='https://cosmos15.osdinfra.net/cosmos/gdc.mdp.prod/local/CnEDataInsights/FoundationalDatasets/BizApps/CustomerInteractions/RelationshipMarketing/DeliveryHealthOutcomes/Interim/2023/05/IRIS_DYNAMICS_Campaign_SegmentedUsers_UserResponses_2023_05_01.ss'\"))"
+				],
+				"execution_count": 63
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Select * From vw_df where PartitionURI like '%IRIS_DYNAMICS_Campaign_SegmentedUsers_UserResponses%'"
+				],
+				"execution_count": 26
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"jupyter": {
+						"outputs_hidden": true
+					},
+					"collapsed": false
+				},
+				"source": [
+					"handled_subjects = set([\n",
+					"    \"Privacy.Subject.User.Puid\", \"Privacy.Subject.User.Anid\", \"Privacy.Subject.User.Opid\",\n",
+					"    \"Privacy.Subject.User.Cid\", \"Privacy.Subject.User.Xuid\", \"Privacy.Subject.User.CommonSchema\",\n",
+					"    \"Privacy.Subject.Device.GlobalDeviceId\", \"Privacy.Subject.Device.CommonSchema\",\n",
+					"    \"Privacy.Subject.Device.XboxHardwareId\", \"Privacy.Subject.Device.XboxSocId\",\n",
+					"    \"Privacy.Subject.Device.XboxClientDeviceId\", \"Privacy.Subject.Device.OtherIdentifier\",\n",
+					"    \"Privacy.Subject.User.ObjectId\", \"Privacy.Subject.User.OrgIdPuid\",\n",
+					"    \"Privacy.Column.TenantId\"\n",
+					"])"
+				],
+				"execution_count": 54
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"2.Creating a view with few dervied columns to use in the later stage"
+				]
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"create or replace temp view  vw_tagsdata as\n",
+					"Select ResourceURI,PartitionURI as NormalisedPath,TagName As FullName,TagProperties As Properties,reverse(substring(reverse(TagName),1,instr(reverse(TagName),'.')-1)) as Name,\n",
+					"replace(TagName,reverse(substring(reverse(TagName),1,instr(reverse(TagName),'.')))) as Namespace,\n",
+					"case when column !='' then FullName else '' end  As MetadataType  From vw_df"
+				],
+				"execution_count": 55
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"df_Tags= spark.sql(\"Select * From vw_tagsdata\")\n",
+					"# display(df_Tags)"
+				],
+				"execution_count": 56
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"from pyspark.sql.functions import col,lower\n",
+					"from functools import reduce\n",
+					"df_Tags= spark.sql(\"Select * From vw_tagsdata\")\n",
+					"# print(\"df_Tags :\",df_Tags.count())#3678787\n",
+					"\n",
+					"df_Tags_Filter1 =df_Tags.filter((col(\"MetaDataType\").isNotNull()) & (col(\"MetaDataType\") != \"\"))\n",
+					"# print(\"df_Tags_Filter1 :\",df_Tags_Filter1.count())#521849\n",
+					"df_Tags_Final = df_Tags_Filter1.filter(~col(\"FullName\").contains('Privacy.Asset.NonPersonal') &\n",
+					"        reduce(\n",
+					"        lambda x, y: x | y,\n",
+					"        [lower(col(\"MetaDataType\")).contains(tag.lower()) for tag in handled_subjects] \n",
+					"    ) | col(\"NameSpace\").contains(\"Privacy.DataType\"))\n",
+					"# print(\"df_Tags_Filter2 :\",df_Tags_Filter2.count())#434144\n",
+					"\n",
+					"# df_Tags_Final =df_Tags_Filter2.filter(col(\"NameSpace\").contains(\"Privacy.DataType\"))\n",
+					"# print(\"df_Tags_Final :\",df_Tags_Final.count())\n",
+					""
+				],
+				"execution_count": 57
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_Tags_Final.coalesce(1).write.format(\"delta\").mode(\"overwrite\").save(\"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/2025_10_07/Delta/AssertTable\")"
+				],
+				"execution_count": 58
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"collapsed": false
+				},
+				"source": [
+					"-- %%sql\n",
+					"-- DROP TABLE IF EXISTS NGP.StreamInfo ;\n",
+					"-- CREATE TABLE NGP.StreamInfo\n",
+					"-- USING DELTA AS\n",
+					"-- Select  * From vw_tagsdata "
+				],
+				"execution_count": 20
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"from pyspark.sql.functions import col,lower\n",
+					"from functools import reduce\n",
+					"df_StreamInfo1 = stream_info_df.filter(~col(\"Streaminfo\").contains('\"ColumnList\":[]') )\n",
+					"df_StreamInfo2= df_StreamInfo1.filter(~col(\"Streaminfo\").contains('Privacy.Asset.NonPersonal') &\n",
+					"        reduce(\n",
+					"        lambda x, y: x | y,\n",
+					"        [lower(col(\"Streaminfo\")).contains(tag.lower()) for tag in handled_subjects]\n",
+					"    ))\n",
+					"df_StreamInfo3 =df_StreamInfo2.filter(col(\"Streaminfo\").contains(\"Privacy.DataType\"))\n",
+					"# print(\"StreamInfo Count: \",df_StreamInfo3.count())"
+				],
+				"execution_count": 59
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"3.Script to generate the data in the json format"
+				]
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"jupyter": {
+						"outputs_hidden": false
+					}
+				},
+				"source": [
+					"from pyspark.sql import functions as F\n",
+					"from pyspark.sql.types import *\n",
+					"import json\n",
+					"import re\n",
+					"\n",
+					"\n",
+					"spark.conf.set(\"spark.sql.mapKeyDedupPolicy\", \"LAST_WIN\")\n",
+					"\n",
+					"# Parse Properties into map\n",
+					"df = df_Tags_Final.withColumn(\"PropertiesMap\", F.from_json(\"Properties\", MapType(StringType(), StringType())))\n",
+					"\n",
+					"\n",
+					"# Patch KeyValuePair to override Key → \"RetentionPlus30\"\n",
+					"df = df.withColumn(\"PropertiesMap\", F.when(\n",
+					"    F.col(\"FullName\") == \"Privacy.Asset.KeyValuePair\",\n",
+					"    F.map_concat(F.col(\"PropertiesMap\"), F.create_map(F.lit(\"Key\"), F.lit(\"RetentionPlus30\")))\n",
+					").otherwise(F.col(\"PropertiesMap\")))\n",
+					"\n",
+					"# Group by NormalisedPath and ResourceURI\n",
+					"grouped = df.groupBy(\"NormalisedPath\", \"ResourceURI\").agg(\n",
+					"    F.collect_list(\n",
+					"        F.struct(\"FullName\", \"Namespace\", \"Name\", \"MetadataType\", \"PropertiesMap\")\n",
+					"    ).alias(\"tags\")\n",
+					")\n",
+					"\n",
+					"# Collect rows to driver for JSON generation\n",
+					"results = grouped.collect()\n",
+					"\n",
+					"final_output = []\n",
+					"\n",
+					"for row in results:\n",
+					"    normalized_path = row['NormalisedPath']\n",
+					"    resource_uri = row['ResourceURI']\n",
+					"    tags = row['tags']\n",
+					"\n",
+					"    asset_tags = []\n",
+					"    column_tags = []\n",
+					"    privacydatatype=[]\n",
+					"    hasLongTailTag= False\n",
+					"    hasIntermediateEngineeringTag=False\n",
+					"    privacySubjectsCounts=0\n",
+					"    \n",
+					"    for tag in tags:\n",
+					"        tag_dict = tag.asDict()\n",
+					"        metadata_type = tag_dict[\"MetadataType\"]\n",
+					"        namespace= tag_dict[\"Namespace\"]\n",
+					"        # privacy_datatype=tag_dict[\"Namespace\"]\n",
+					"        entry = {\n",
+					"            \"FullName\": tag_dict[\"FullName\"],\n",
+					"            \"Namespace\": tag_dict[\"Namespace\"],\n",
+					"            \"Name\": tag_dict[\"Name\"],\n",
+					"            \"Properties\": tag_dict[\"PropertiesMap\"]\n",
+					"        }\n",
+					"        if tag_dict[\"Namespace\"].startswith(\"Privacy.Subject\"):\n",
+					"            privacySubjectsCounts+=1\n",
+					"        if (tag_dict[\"Namespace\"] == \"Privacy.DataType\"):\n",
+					"            privacydatatype.append(tag_dict[\"Name\"])\n",
+					"        if(tag_dict[\"FullName\"]==\"Privacy.Asset.LongTail\"):\n",
+					"            hasLongTailTag: True\n",
+					"        if(tag_dict[\"FullName\"]==\"Privacy.Asset.IntermediateEngineering\"):\n",
+					"            hasIntermediateEngineeringTag: True\n",
+					"        if metadata_type:\n",
+					"            column_tags.append({\n",
+					"                \"Name\": tag_dict[\"Name\"],\n",
+					"                \"MetadataType\": metadata_type,\n",
+					"                \"DataType\": None,\n",
+					"                \"Properties\": tag_dict[\"PropertiesMap\"]\n",
+					"            })\n",
+					"        else:\n",
+					"            asset_tags.append(entry)\n",
+					"\n",
+					"    final_output.append({\n",
+					"        \"NormalizedPath\": normalized_path,\n",
+					"        \"ResourceURI\": resource_uri,\n",
+					"        \"AssetTagsList\": asset_tags,\n",
+					"        \"ColumnList\":  column_tags,\n",
+					"        \"HasLongTailTag\":hasLongTailTag,\n",
+					"        \"HasIntermediateEngineeringTag\":hasIntermediateEngineeringTag,\n",
+					"        \"PrivacyDatatype\":privacydatatype,\n",
+					"        \"PrivacySubjectsCount\":privacySubjectsCounts,\n",
+					"        \"LastUpdateDeleteApplied\":found_datetime\n",
+					"    })"
+				],
+				"execution_count": 60
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Serialize entire row into JSON string"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"from pyspark.sql.functions import to_json, struct\n",
+					"output_df = spark.createDataFrame([Row(**item) for item in final_output])\n",
+					"# stream_info_df = output_df.select(to_json(struct(\"*\")).alias(\"StreamInfo\"))"
+				],
+				"execution_count": 62
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Write Function for text file"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"from datetime import datetime\n",
+					"date_str = datetime.now().strftime(\"%Y%m%d%H%M%S\")\n",
+					"\n",
+					"def write_df(df, filename):\n",
+					"     df.write.mode(\"overwrite\") \\\n",
+					"     .text(f\"{output_path_base}{date_str}_{filename}\")"
+				],
+				"execution_count": 19
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Write Function for Delta file"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"def write_df_delta(df, filename):\n",
+					"     df.write.mode(\"overwrite\") \\\n",
+					"     .format(\"delta\").save(f\"{output_path_base}{date_str}_{filename}\")\n",
+					"# write_df_delta(stream_info_df, \"NewStreamInfo\")     "
+				],
+				"execution_count": 163
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Reading the final file to validate"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_delta_stream=spark.read.format(\"delta\").load(\"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/Output/delta/20250925095339_NewStreamInfo\")\n",
+					"df_delta_stream.count()"
+				],
+				"execution_count": 226
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					""
+				],
+				"execution_count": 255
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# <mark>Appying Filters</mark>"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"from pyspark.sql.functions import col,lower\n",
+					"from functools import reduce\n",
+					"df_StreamInfo1 = stream_info_df.filter(~col(\"Streaminfo\").contains('\"ColumnList\":[]') )\n",
+					"df_StreamInfo2= df_StreamInfo1.filter(~col(\"Streaminfo\").contains('Privacy.Asset.NonPersonal') &\n",
+					"        reduce(\n",
+					"        lambda x, y: x | y,\n",
+					"        [lower(col(\"Streaminfo\")).contains(tag.lower()) for tag in handled_subjects]\n",
+					"    ))\n",
+					"df_StreamInfo3 =df_StreamInfo2.filter(col(\"Streaminfo\").contains(\"Privacy.DataType\"))\n",
+					"\n",
+					"# write_df(df_StreamInfo, \"StreamInfo\")    \n",
+					"print(\"StreamInfo Count: \",df_StreamInfo3.count())"
+				],
+				"execution_count": 257
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_NonPersonalTags = stream_info_df.filter(col(\"Streaminfo\").contains('Privacy.Asset.NonPersonal'))\n",
+					"print(\"Non Personal Tags Count : \",df_NonPersonalTags.count())\n",
+					"write_df(df_NonPersonalTags, \"NonPersonalTags\")     \n",
+					"\n",
+					"df_NoSubjectColumnsORWrongFormat = stream_info_df.filter(~(reduce(lambda x, y: x | y,[lower(col(\"Streaminfo\")).contains(tag.lower()) for tag in handled_subjects])) | col(\"Streaminfo\").contains('\"ColumnList\":[]') )\n",
+					"write_df(df_NoSubjectColumnsORWrongFormat, \"NoSubjectColumnsORWrongFormat\")     \n",
+					"print(\"NoSubjectColumnsORWrongFormat Count : \",df_NoSubjectColumnsORWrongFormat.count())\n",
+					"\n",
+					"df_PrivacyDataType = stream_info_df.filter(~col(\"Streaminfo\").contains(\"Privacy.DataType\"))\n",
+					"write_df(df_PrivacyDataType, \"NoAssetPrivacyDataTypeTags\")    \n",
+					"print(\"NoAssetPrivacyDataTypeTags : \",df_PrivacyDataType.count())\n",
+					""
+				],
+				"execution_count": 275
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Validations of StreamInfo file"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_ss = spark.read.format(\"csv\").option(\"header\",\"false\").option(\"sep\",\"\\t\").load(\"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/2025_09_28/ScopeScript/StreamInfo_2025_09_29.txt\")\n",
+					"df_ss_nonPersonal = spark.read.format(\"csv\").option(\"header\",\"false\").option(\"sep\",\"\\t\").load(\"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/2025_09_28/ScopeScript/2025_09_29_03_15_50_NonPersonalTags_.tsv\")\n",
+					"df_ss_nonPrivacy = spark.read.format(\"csv\").option(\"header\",\"false\").option(\"sep\",\"\\t\").load(\"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/2025_09_28/ScopeScript/2025_09_29_03_15_50_NoAssetPrivacyDataTypeTags_.tsv\")\n",
+					"df_ss_nonSubTags = spark.read.format(\"csv\").option(\"header\",\"false\").option(\"sep\",\"\\t\").load(\"adl://gdc-mdp-dev-c15.azuredatalakestore.net/local/users/v-mohammg/2025_09_28/ScopeScript/2025_09_29_03_15_50_NoSubjectColumnsORWrongFormat_.tsv\")"
+				],
+				"execution_count": 260
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"print(\"StreamFile count :\",df_ss.count())\n",
+					"print(\"Non Personal :\", df_ss_nonPersonal.count())\n",
+					"print(\"Non Privacy :\", df_ss_nonPrivacy.count())\n",
+					"print(\"Non Sub Tags :\", df_ss_nonSubTags.count())\n",
+					"# print(\"Tagging Data count :\",taggedData.count())"
+				],
+				"execution_count": 261
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_ss.createOrReplaceTempView(\"vw_df_ScopScript\")\n",
+					"df_StreamInfo3.createOrReplaceTempView(\"vw_df_Pyspark\")\n",
+					""
+				],
+				"execution_count": 262
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Create or REPLACE temp view vw_PysparkData as\n",
+					"Select SUBSTRING(Streaminfo,20,instr(Streaminfo,\",\")-21)As NewCol,* From vw_df_Pyspark "
+				],
+				"execution_count": 263
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Create or REPLACE temp view vw_ScopescriptData as\n",
+					"Select SUBSTRING(_c0,20,instr(_c0,\",\")-21) As NewCol,* From vw_df_ScopScript"
+				],
+				"execution_count": 264
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Select  * from  vw_PysparkData  a   join   vw_ScopescriptData b on a.Newcol=b.Newcol limit 10\n",
+					"--where b.NewCol is null and streaminfo not like '%\"TagName\\\":\\\"Privacy.Subject.User%'\n",
+					"--11069"
+				],
+				"execution_count": 295
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"jupyter": {
+						"outputs_hidden": false
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Select * from  vw_PysparkData  a left  join   vw_ScopescriptData b on a.Newcol=b.Newcol\n",
+					"where b.NewCol is null --and streaminfo not like '%TagName:Privacy.Subject.User%'\n",
+					"and a.newcol like 'https://cosmos15.osdinfra.net/cosmos/gdc.mdp.prod/local/BYOD/Analyst/v-akritijain/Fabric/ORAutomation/QC/OutcomeDataUsers_%'\n",
+					""
+				],
+				"execution_count": 269
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"jupyter": {
+						"outputs_hidden": true
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Select distinct ResourceURI From vw_tagsdata where  NormalisedPath in (\n",
+					"Select distinct a.Newcol from  vw_PysparkData  a left  join   vw_ScopescriptData b on a.Newcol=b.Newcol\n",
+					"where b.NewCol is null)"
+				],
+				"execution_count": 267
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"jupyter": {
+						"outputs_hidden": true
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Select ResourceURI,count(distinct NormalisedPath) From vw_tagsdata where  NormalisedPath in (\n",
+					"Select distinct a.Newcol from  vw_PysparkData  a left  join   vw_ScopescriptData b on a.Newcol=b.Newcol\n",
+					"where b.NewCol is null)\n",
+					"group by ResourceURI"
+				],
+				"execution_count": 268
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# Non Personal tag Validation"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_ss_nonPersonal.createOrReplaceTempView(\"vw_nonPersonal_old\")\n",
+					"df_NonPersonalTags.createOrReplaceTempView(\"vw_NonPersonalTags_New\")\n",
+					""
+				],
+				"execution_count": 276
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Select * From vw_nonPersonal_old limit 2"
+				],
+				"execution_count": 278
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Create or REPLACE temp view view_NonPersonalTags_New as\n",
+					"Select SUBSTRING(Streaminfo,20,instr(Streaminfo,\",\")-21)As NewCol,* From vw_NonPersonalTags_New "
+				],
+				"execution_count": 282
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Create or REPLACE temp view view_nonPersonal_old as\n",
+					"Select SUBSTRING(_c0,20,instr(_c0,\",\")-21)As NewCol,* From vw_nonPersonal_old "
+				],
+				"execution_count": 283
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Select count(1) From view_NonPersonalTags_New a left join view_nonPersonal_old b on a.newcol=b.newcol\n",
+					"where b.newcol is null"
+				],
+				"execution_count": 288
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"jupyter": {
+						"outputs_hidden": true
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Select * From view_NonPersonalTags_New a left join view_nonPersonal_old b on a.newcol=b.newcol\n",
+					"where b.newcol is null"
+				],
+				"execution_count": 287
+			},
+			{
+				"cell_type": "markdown",
+				"metadata": {
+					"nteract": {
+						"transient": {
+							"deleting": false
+						}
+					}
+				},
+				"source": [
+					"# NoSubjectColumnsORWrongFormat"
+				]
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					"df_ss_nonSubTags.createOrReplaceTempView(\"vw_nonSubTags_old\")\n",
+					"df_NoSubjectColumnsORWrongFormat.createOrReplaceTempView(\"vw_nonSubTags_New\")"
+				],
+				"execution_count": 290
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Create or REPLACE temp view view_nonSubTags_New as\n",
+					"Select SUBSTRING(Streaminfo,20,instr(Streaminfo,\",\")-21)As NewCol,* From vw_nonSubTags_New "
+				],
+				"execution_count": 291
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Create or REPLACE temp view view_nonSubTags_old as\n",
+					"Select SUBSTRING(_c0,20,instr(_c0,\",\")-21)As NewCol,* From vw_nonSubTags_old "
+				],
+				"execution_count": 293
+			},
+			{
+				"cell_type": "code",
+				"metadata": {
+					"microsoft": {
+						"language": "sparksql"
+					},
+					"jupyter": {
+						"outputs_hidden": true
+					},
+					"collapsed": false
+				},
+				"source": [
+					"%%sql\n",
+					"Select * From view_nonSubTags_old a left join view_nonSubTags_New b on a.newcol=b.newcol\n",
+					"where b.newcol is null"
+				],
+				"execution_count": 294
+			},
+			{
+				"cell_type": "code",
+				"source": [
+					""
+				]
+			}
+		]
+	}
+}
